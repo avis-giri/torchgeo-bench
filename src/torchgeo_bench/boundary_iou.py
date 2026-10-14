@@ -147,8 +147,6 @@ class MulticlassBoundaryIoU(Metric):
         if self.ignore_index is not None:
             ignored = target == self.ignore_index
             scored = ~_square_pool(ignored, width, erode=False)
-            if not scored.any():
-                return
 
         # A class missing from both maps has empty bands, so it can only add zero to each total.
         present = torch.unique(torch.cat([preds.reshape(-1), target.reshape(-1)]))
