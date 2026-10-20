@@ -207,6 +207,8 @@ dtype is ``float16`` or ``float32``. The loss is cross entropy with the
 configured ``ignore_index``; there is no constructor-style criterion block.
 Segmentation confidence intervals use ``classification.bootstrap_samples``.
 
+See :ref:`segmentation-model-selection` for the validation requirements and model-selection policy.
+
 Optional image measurements
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

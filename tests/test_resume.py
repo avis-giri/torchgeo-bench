@@ -1,12 +1,14 @@
 """Regression tests for resume hashing and metric completeness."""
 
+import hashlib
+import json
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
 from tests.support.runner import _resume_row
-from torchgeo_bench.config.presets import merge_settings, resolve_run_config
+from torchgeo_bench.config.presets import ModelPreset, merge_settings, resolve_run_config
 from torchgeo_bench.config.run import RunConfig
 from torchgeo_bench.datasets import get_bench_dataset_class
 from torchgeo_bench.resume import (
@@ -25,7 +27,21 @@ def _cfg(**sections) -> RunConfig:
 
 def _hash(config: RunConfig, dataset: str = "m-eurosat") -> str:
     resolved, preset = resolve_run_config(config, dataset)
-    return resume_config_hash(resolved, preset)
+    return resume_config_hash(resolved, preset, task=get_bench_dataset_class(dataset).task)
+
+
+def _hash_without_epoch_selection(config: RunConfig, preset: ModelPreset) -> str:
+    """Reproduce the shared hash payload before segmentation selected an epoch."""
+    payload = {
+        "schema_version": config.schema_version,
+        "model": {"name": preset.name, "target": preset.target, "kwargs": preset.kwargs},
+        "input": config.input.model_dump(mode="json"),
+        "classification": config.classification.model_dump(mode="json", exclude={"methods"}),
+        "segmentation": config.segmentation.model_dump(mode="json"),
+        "runtime": config.runtime.model_dump(mode="json", include={"seed", "batch_size"}),
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(encoded.encode()).hexdigest()[:16]
 
 
 @pytest.mark.parametrize(
@@ -86,6 +102,42 @@ def test_config_hash_includes_resolved_model_target_and_kwargs() -> None:
 def test_config_hash_reflects_dataset_resolved_preset_overrides() -> None:
     config = _cfg(model={"name": "torchgeo/scalemae_large_fmow"})
     assert _hash(config, "m-eurosat") != _hash(config, "forestnet")
+
+
+@pytest.mark.parametrize("dataset", ["m-eurosat", "forestnet"])
+def test_epoch_selection_preserves_classification_hashes(dataset: str) -> None:
+    config, preset = resolve_run_config(_cfg(datasets=[dataset]), dataset)
+    ds_cls = get_bench_dataset_class(dataset)
+    assert ds_cls.task == "classification"
+    assert resume_config_hash(config, preset, task=ds_cls.task) == _hash_without_epoch_selection(
+        config, preset
+    )
+
+
+@pytest.mark.parametrize(
+    ("selection_protocol", "can_resume"),
+    [("final-epoch", False), ("best-validation", True)],
+)
+def test_segmentation_resume_requires_best_validation_protocol(
+    tmp_path: Path, selection_protocol: str, *, can_resume: bool
+) -> None:
+    dataset = "burn_scars"
+    config, preset = resolve_run_config(_cfg(datasets=[dataset], output={"resume": True}), dataset)
+    ds_cls = get_bench_dataset_class(dataset)
+    metadata = _resume_row(config, method=f"seg-{config.segmentation.head}", metric_name="mIoU")
+    protocol_hashes = {
+        "final-epoch": _hash_without_epoch_selection(config, preset),
+        "best-validation": resume_config_hash(config, preset, task=ds_cls.task),
+    }
+    assert metadata["config_hash"] == protocol_hashes["best-validation"]
+    path = tmp_path / "results.csv"
+    row = {**metadata, "config_hash": protocol_hashes[selection_protocol]}
+    pd.DataFrame([row]).to_csv(path, index=False)
+
+    completed = ResumeState(*load_completed(str(path)))
+    plan = plan_dataset_run(config, ds_cls, metadata, completed)
+
+    assert plan.skip_dataset is can_resume
 
 
 def test_resume_keys_require_the_requested_metric(tmp_path: Path) -> None:

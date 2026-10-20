@@ -21,6 +21,11 @@ Added
   Downloadable with ``torchgeo-bench download aid``.  One of the three
   most-used benchmarks in the GFM literature.
 
+Fixed
+^^^^^
+
+* Segmentation evaluation follows :ref:`segmentation-model-selection`. Resume distinguishes this protocol from final-epoch results without changing classification identities or CSV columns; see :doc:`results-format` for rerun implications.
+
 0.5.0 (2026-08-10)
 ------------------
 

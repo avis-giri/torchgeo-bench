@@ -602,6 +602,8 @@ def evaluate_segmentation(
         Tuple of (metrics, feature_dim, lr, batch_size).
     """
     train_loader, val_loader, test_loader = loaders.train, loaders.val, loaders.test
+    if val_loader is None or len(val_loader) == 0:
+        raise ValueError("Segmentation benchmarks require a non-empty validation loader.")
     device = torch.device(cfg.runtime.device)
     seed, verbose = cfg.runtime.seed, cfg.runtime.verbose
     from torchgeo_bench.segmentation_task import build_seg_probe_and_solver
@@ -888,7 +890,7 @@ def run_dataset(
     ds_cls = get_bench_dataset_class(ds_name)
 
     cfg, model_cfg = resolve_run_config(cfg, ds_name)
-    config_hash = resume_config_hash(cfg, model_cfg)
+    config_hash = resume_config_hash(cfg, model_cfg, task=ds_cls.task)
     common_meta = dataset_metadata(cfg, ds_name, ds_cls, model_cfg, config_hash)
     plan = plan_dataset_run(cfg, ds_cls, common_meta, completed)
     if plan.skip_dataset:

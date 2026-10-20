@@ -285,6 +285,25 @@ Training & evaluation (all heads)
   images and recompute dataset-level mIoU from their aggregated confusion
   matrices.
 
+.. _segmentation-model-selection:
+
+Model selection
+^^^^^^^^^^^^^^^
+
+All segmentation heads train for every configured epoch. After training, the solver restores the completed epoch with the highest validation dataset-level macro mIoU; ties retain the earliest epoch. Selection uses no test metrics. All test metrics and bootstrap confusion matrices use the restored state, on both loader and cached-feature paths. There is no early stopping or configurable final-epoch option.
+
+Benchmark runs require a non-empty validation loader before training or feature extraction. Direct solver calls may omit validation and retain the final epoch; supplied validation must be non-empty. Non-finite validation mIoU raises an error. A failed run does not write a successful result.
+
+After fitting, :class:`~torchgeo_bench.segmentation_task.SegmentationSolver` exposes:
+
+* ``best_epoch``: the selected epoch, numbered from one.
+* ``best_val_miou``: the selected validation dataset-level macro mIoU.
+* ``val_history``: every epoch's validation mIoU in chronological order.
+
+Each fit call resets these attributes. Without validation, ``best_epoch`` and ``best_val_miou`` are ``None`` and ``val_history`` is empty.
+
+The solver keeps one independent CPU snapshot of the selected state: head parameters and buffers, trainable backbone parameters, and backbone buffers. Restoration copies values into the existing model tensors without replacing modules or hooks. Frozen backbone weights are not copied. The snapshot is for evaluation, not for resuming training.
+
 Segmentation knobs
 ------------------
 
